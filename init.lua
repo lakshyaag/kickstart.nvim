@@ -92,6 +92,9 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 
 vim.keymap.set('n', '<leader>e', '<cmd>Oil<CR>', { desc = 'Open Oil file explorer' })
 
+-- Python keymaps
+vim.keymap.set('n', '<leader>pp', '<cmd>!uv run %<CR>', { desc = 'Run currently open Python file' })
+
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
 -- is not what someone will guess without a bit more experience.
@@ -587,9 +590,27 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for lua_ls, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
+        ruff = {
+          on_attach = function(client, _)
+            client.server_capabilities.hoverProvider = false
+          end,
+          init_options = {
+            settings = {
+              args = {
+                '--ignore',
+                'F821',
+                '--ignore',
+                'E402',
+                '--ignore',
+                'E722',
+                '--ignore',
+                'E712',
+              },
+            },
+          },
+        },
         -- clangd = {},
         -- gopls = {},
-        -- pyright = {},
         -- rust_analyzer = {},
         -- ... etc. See :help lspconfig-all for a list of all the pre-configured LSPs
         --
@@ -642,9 +663,6 @@ require('lazy').setup({
         handlers = {
           function(server_name)
             local server = servers[server_name] or {}
-            -- This handles overriding only values explicitly passed
-            -- by the server configuration above. Useful when disabling
-            -- certain features of an LSP (for example, turning off formatting for ts_ls)
             server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
             require('lspconfig')[server_name].setup(server)
           end,
