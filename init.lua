@@ -589,52 +589,62 @@ require('lazy').setup({
       --  - capabilities (table): Override fields in capabilities. Can be used to disable certain LSP features.
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for lua_ls, you could go to: https://luals.github.io/wiki/settings/
+      ---@class LspServersConfig
+      ---@field mason table<string, vim.lsp.Config>
+      ---@field others table<string, vim.lsp.Config>
       local servers = {
-        ruff = {
-          on_attach = function(client, _)
-            client.server_capabilities.hoverProvider = false
-          end,
-          init_options = {
+        mason = {
+          -- clangd = {},
+          -- gopls = {},
+          -- rust_analyzer = {},
+          -- ... etc. See :help lspconfig-all for a list of all the pre-configured LSPs
+          --
+          -- Some languages (like typescript) have entire language plugins that can be useful:
+          --    https://github.com/pmizio/typescript-tools.nvim
+          --
+          -- But for many setups, the LSP (ts_ls) will work just fine
+          -- ts_ls = {},
+          --
+          ruff = {
             settings = {
-              args = {
-                '--ignore',
-                'F821',
-                '--ignore',
-                'E402',
-                '--ignore',
-                'E722',
-                '--ignore',
-                'E712',
+              lint = {
+                ignore = { 'F401' },
               },
             },
           },
-        },
-        -- clangd = {},
-        -- gopls = {},
-        -- rust_analyzer = {},
-        -- ... etc. See :help lspconfig-all for a list of all the pre-configured LSPs
-        --
-        -- Some languages (like typescript) have entire language plugins that can be useful:
-        --    https://github.com/pmizio/typescript-tools.nvim
-        --
-        -- But for many setups, the LSP (ts_ls) will work just fine
-        -- ts_ls = {},
-        --
 
-        lua_ls = {
-          -- cmd = { ... },
-          -- filetypes = { ... },
-          -- capabilities = {},
-          settings = {
-            Lua = {
-              completion = {
-                callSnippet = 'Replace',
+          basedpyright = {
+            capabilities = (function()
+              local capabilities = vim.lsp.protocol.make_client_capabilities()
+              capabilities.textDocument.publishDiagnostics.tagSupport.valueSet = { 2 }
+              return capabilities
+            end)(),
+            settings = {
+              basedpyright = {
+                disableOrganizeImports = true,
+                analysis = {
+                  ignore = { '*' },
+                },
               },
-              -- You can toggle below to ignore Lua_LS's noisy missing-fields warnings
-              -- diagnostics = { disable = { 'missing-fields' } },
+            },
+          },
+
+          lua_ls = {
+            -- cmd = { ... },
+            -- filetypes = { ... },
+            -- capabilities = {},
+            settings = {
+              Lua = {
+                completion = {
+                  callSnippet = 'Replace',
+                },
+                -- You can toggle below to ignore Lua_LS's noisy missing-fields warnings
+                -- diagnostics = { disable = { 'missing-fields' } },
+              },
             },
           },
         },
+        others = {},
       }
 
       -- Ensure the servers and tools above are installed
@@ -650,24 +660,30 @@ require('lazy').setup({
       --
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = vim.tbl_keys(servers or {})
+      local ensure_installed = vim.tbl_keys(servers.mason or {})
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
         'ruff',
+        'basedpyright',
+        'svelte',
+        'tailwindcss',
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
+      -- Configure LSP servers
+      for server, config in pairs(vim.tbl_extend('keep', servers.mason, servers.others)) do
+        if not vim.tbl_isempty(config) then
+          vim.lsp.config(server, config)
+        end
+      end
+
       require('mason-lspconfig').setup {
         ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
-        automatic_installation = false,
-        handlers = {
-          function(server_name)
-            local server = servers[server_name] or {}
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
-        },
+        automatic_enable = true,
       }
+      if not vim.tbl_isempty(servers.others) then
+        vim.lsp.enable(vim.tbl_keys(servers.others))
+      end
     end,
   },
 
@@ -691,7 +707,7 @@ require('lazy').setup({
         -- Disable "format_on_save lsp_fallback" for languages that don't
         -- have a well standardized coding style. You can add additional
         -- languages here or re-enable it for the disabled ones.
-        local disable_filetypes = { c = true, cpp = true }
+        local disable_filetypes = { c = true, cpp = true, py = true }
         if disable_filetypes[vim.bo[bufnr].filetype] then
           return nil
         else
@@ -703,9 +719,6 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
-        -- Conform can also run multiple formatters sequentially
-        python = { 'ruff' },
-        --
         -- You can use 'stop_after_first' to run the first available formatter from the list
         -- javascript = { "prettierd", "prettier", stop_after_first = true },
       },
